@@ -2,11 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
-
-@pytest.fixture(scope="session")
-def client():
-    with TestClient(app) as c:
-        yield c
+VALID_KEY = "secret-key-123"
+HEADERS   = {"X-API-Key": VALID_KEY}
 
 SAMPLE = {
     "estimated_days": 10,
@@ -25,6 +22,14 @@ SAMPLE = {
 }
 
 
+@pytest.fixture(scope="session")
+def client():
+    with TestClient(app) as c:
+        yield c
+
+
+# ── System ────────────────────────────────────────────────────────────────────
+
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
@@ -38,8 +43,24 @@ def test_features(client):
     assert len(r.json()["features"]) == 13
 
 
-def test_predict(client):
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+def test_predict_no_key(client):
+    """API key olmadan 401 dönmeli."""
     r = client.post("/predict", json=SAMPLE)
+    assert r.status_code == 401
+
+
+def test_predict_wrong_key(client):
+    """Yanlış API key ile 403 dönmeli."""
+    r = client.post("/predict", json=SAMPLE, headers={"X-API-Key": "wrong-key"})
+    assert r.status_code == 403
+
+
+# ── Prediction ────────────────────────────────────────────────────────────────
+
+def test_predict(client):
+    r = client.post("/predict", json=SAMPLE, headers=HEADERS)
     assert r.status_code == 200
     data = r.json()
     assert data["prediction"] in [0, 1]
@@ -49,13 +70,14 @@ def test_predict(client):
 
 
 def test_predict_validation_error(client):
-    bad = {**SAMPLE, "estimated_days": 999}  # ge=1, le=90 ihlali
-    r = client.post("/predict", json=bad)
-    assert r.status_code == 422  # Unprocessable Entity
+    """estimated_days > 90 → 422 Unprocessable Entity."""
+    bad = {**SAMPLE, "estimated_days": 999}
+    r = client.post("/predict", json=bad, headers=HEADERS)
+    assert r.status_code == 422
 
 
 def test_explain(client):
-    r = client.post("/explain", json=SAMPLE)
+    r = client.post("/explain", json=SAMPLE, headers=HEADERS)
     assert r.status_code == 200
     data = r.json()
     assert "shap_values" in data

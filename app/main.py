@@ -1,16 +1,26 @@
-from fastapi import FastAPI, HTTPException
+import os
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Depends, Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 from app.schemas import DeliveryInput, PredictionResponse, ExplainResponse, HealthResponse
+from app.auth import verify_api_key
 from app import model as ml
+
+load_dotenv()
+
+# Rate limiter — istek başına IP adresine göre sınırlar
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: modeli yükle
     ml.load_model()
     yield
-    # Shutdown: temizlik (gerekirse)
 
 
 app = FastAPI(
@@ -18,21 +28,36 @@ app = FastAPI(
     description="""
 Predicts whether an Olist order will be delivered **late or on time**.
 
-## Endpoints
+## Authentication
+All prediction endpoints require an `X-API-Key` header:
+```
+X-API-Key: your-api-key
+```
 
-- **POST /predict** — Delivery delay prediction (On Time / Late)
-- **POST /explain** — Prediction + SHAP explanation (which features matter most)
-- **GET  /health**  — Model health check
-- **GET  /features** — List of expected input features
+## Rate Limits
+- `/predict` → 10 requests/minute
+- `/explain` → 5 requests/minute
+
+## Endpoints
+- **POST /predict** — Delivery delay prediction
+- **POST /explain** — Prediction + SHAP explanation
+- **GET  /health**  — Health check (no auth required)
+- **GET  /features** — Feature list (no auth required)
 """,
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
+# Rate limit hata handler'ı kaydet
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ── Public endpoints (auth yok) ──────────────────────────────────────────────
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 def health():
-    """API ve model durumunu kontrol et."""
+    """API ve model durumunu kontrol et. Auth gerektirmez."""
     return {
         "status": "ok",
         "model": "XGBoost (olist-ml-science)",
@@ -42,40 +67,49 @@ def health():
 
 @app.get("/features", tags=["System"])
 def features():
-    """Modelin beklediği feature listesini döner."""
+    """Modelin beklediği feature listesi. Auth gerektirmez."""
     return {"features": ml.get_features()}
 
 
-@app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
-def predict(data: DeliveryInput):
-    """
-    Sipariş özelliklerine göre teslimat gecikmesi tahmini yapar.
+# ── Protected endpoints (API key + rate limit) ────────────────────────────────
 
-    - **prediction**: 0 = On Time, 1 = Late
-    - **label**: "On Time" veya "Late"
-    - **probability_late**: Geç kalma olasılığı (0–1)
+@app.post(
+    "/predict",
+    response_model=PredictionResponse,
+    tags=["Prediction"],
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit(os.getenv("RATE_LIMIT_PREDICT", "10/minute"))
+def predict(request: Request, data: DeliveryInput):
+    """
+    Sipariş özelliklerine göre teslimat gecikmesi tahmini.
+
+    **Auth:** X-API-Key header gerekli
+    **Rate limit:** 10 istek/dakika
     """
     try:
-        result = ml.predict(data.model_dump())
-        return result
+        return ml.predict(data.model_dump())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/explain", response_model=ExplainResponse, tags=["Prediction"])
-def explain(data: DeliveryInput):
+@app.post(
+    "/explain",
+    response_model=ExplainResponse,
+    tags=["Prediction"],
+    dependencies=[Depends(verify_api_key)],
+)
+@limiter.limit(os.getenv("RATE_LIMIT_EXPLAIN", "5/minute"))
+def explain(request: Request, data: DeliveryInput):
     """
-    Tahmin + SHAP açıklaması döner.
+    Tahmin + SHAP açıklaması.
 
-    - **shap_values**: Her feature'ın tahmine katkısı (pozitif = geç kalma yönünde)
-    - **top_factor**: En etkili feature
+    **Auth:** X-API-Key header gerekli
+    **Rate limit:** 5 istek/dakika
     """
     try:
-        pred_result = ml.predict(data.model_dump())
-        expl_result = ml.explain(data.model_dump())
-        return {
-            **pred_result,
-            **expl_result,
-        }
+        pred = ml.predict(data.model_dump())
+        expl = ml.explain(data.model_dump())
+        return {**pred, **expl}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

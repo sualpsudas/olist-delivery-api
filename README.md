@@ -20,6 +20,8 @@ REST API that predicts whether an Olist order will be delivered **late or on tim
 
 ## Quick Start
 
+### Local
+
 ```bash
 # 1. Clone
 git clone https://github.com/sualpsudas/olist-delivery-api.git
@@ -29,12 +31,54 @@ cd olist-delivery-api
 conda activate ai
 pip install -r requirements.txt
 
-# 3. Run
+# 3. Configure
+cp .env.example .env
+# Edit .env: set your API_KEYS
+
+# 4. Run
 uvicorn app.main:app --reload --port 8000
 ```
 
 API → http://localhost:8000
 Swagger → http://localhost:8000/docs
+
+### Docker
+
+```bash
+# Build & run
+docker compose up --build
+
+# Or with custom keys
+docker run -e API_KEYS=mykey -p 8000:8000 olist-delivery-api
+```
+
+---
+
+## Authentication
+
+All prediction endpoints require an `X-API-Key` header:
+
+```bash
+# Set in .env
+API_KEYS=secret-key-123,dev-key-456
+
+# Use in requests
+curl -H "X-API-Key: secret-key-123" ...
+```
+
+| Status | Meaning |
+|--------|---------|
+| `401` | Header missing |
+| `403` | Invalid key |
+
+## Rate Limiting
+
+| Endpoint | Limit |
+|----------|-------|
+| `/predict` | 10 req/min |
+| `/explain` | 5 req/min |
+
+Exceeding the limit returns `429 Too Many Requests`.
 
 ---
 
@@ -42,6 +86,7 @@ Swagger → http://localhost:8000/docs
 
 ```bash
 curl -X POST http://localhost:8000/predict \
+  -H "X-API-Key: secret-key-123" \
   -H "Content-Type: application/json" \
   -d '{
     "estimated_days": 10,
@@ -133,13 +178,17 @@ Positive SHAP → pushes toward **Late**. Negative → toward **On Time**.
 ```
 olist-delivery-api/
 ├── app/
-│   ├── main.py       # FastAPI app, routes
+│   ├── main.py       # FastAPI app, routes, rate limiting
+│   ├── auth.py       # API key authentication
 │   ├── model.py      # Model loading, predict, explain
 │   └── schemas.py    # Pydantic input/output models
 ├── models/
 │   └── xgb_model.pkl # Trained XGBoost model
 ├── tests/
-│   └── test_api.py   # 5 pytest tests
+│   └── test_api.py   # 7 pytest tests (auth + prediction)
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
 └── requirements.txt
 ```
 
@@ -149,5 +198,7 @@ olist-delivery-api/
 
 ```bash
 pytest tests/ -v
-# 5 passed
+# 7 passed
 ```
+
+Covers: health, features, auth (no key, wrong key), predict, validation error, explain.

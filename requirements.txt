@@ -6,5 +6,7 @@ shap
 scikit-learn
 pandas
 numpy
+slowapi
+python-dotenv
 pytest
 httpx
