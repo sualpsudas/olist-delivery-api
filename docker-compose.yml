@@ -3,13 +3,8 @@ services:
     build: .
     ports:
       - "8000:8000"
-    environment:
-      - API_KEYS=secret-key-123,dev-key-456
-      - RATE_LIMIT_PREDICT=10/minute
-      - RATE_LIMIT_EXPLAIN=5/minute
-    # Production'da .env dosyasını mount et:
-    # env_file:
-    #   - .env
+    env_file:
+      - .env
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]

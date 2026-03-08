@@ -1,8 +1,10 @@
+import os
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
-VALID_KEY = "secret-key-123"
+# Test key — .env'den oku, yoksa default test değeri kullan
+VALID_KEY = os.getenv("API_KEYS", "test-key").split(",")[0].strip()
 HEADERS   = {"X-API-Key": VALID_KEY}
 
 SAMPLE = {
