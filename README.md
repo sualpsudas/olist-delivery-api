@@ -45,11 +45,12 @@ Swagger → http://localhost:8000/docs
 ### Docker
 
 ```bash
-# Build & run
-docker compose up --build
+# 1. Copy and configure .env
+cp .env.example .env
+# Edit .env: set API_KEYS=your-secret-key
 
-# Or with custom keys
-docker run -e API_KEYS=mykey -p 8000:8000 olist-delivery-api
+# 2. Build & run
+docker compose up --build
 ```
 
 ---
@@ -59,11 +60,12 @@ docker run -e API_KEYS=mykey -p 8000:8000 olist-delivery-api
 All prediction endpoints require an `X-API-Key` header:
 
 ```bash
-# Set in .env
-API_KEYS=secret-key-123,dev-key-456
+# Copy example and set your own key
+cp .env.example .env
+# Edit .env: API_KEYS=your-own-secret-key
 
 # Use in requests
-curl -H "X-API-Key: secret-key-123" ...
+curl -H "X-API-Key: your-own-secret-key" ...
 ```
 
 | Status | Meaning |
