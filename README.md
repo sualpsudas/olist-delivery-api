@@ -20,6 +20,8 @@ REST API that predicts whether an Olist order will be delivered **late or on tim
 
 ## Quick Start
 
+The trained model (`models/xgb_model.pkl`) is included in the repo — no extra setup needed.
+
 ### Local
 
 ```bash
@@ -27,15 +29,18 @@ REST API that predicts whether an Olist order will be delivered **late or on tim
 git clone https://github.com/sualpsudas/olist-delivery-api.git
 cd olist-delivery-api
 
-# 2. Install
-conda activate ai
+# 2. Create and activate conda environment
+conda create -n delivery-api python=3.11 -y
+conda activate delivery-api
+
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure
+# 4. Configure API key
 cp .env.example .env
-# Edit .env: set your API_KEYS
+# Open .env and set: API_KEYS=your-secret-key
 
-# 4. Run
+# 5. Run
 uvicorn app.main:app --reload --port 8000
 ```
 
